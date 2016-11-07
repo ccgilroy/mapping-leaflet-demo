@@ -145,6 +145,8 @@ Static maps are actually more complicated, if you want to render the base map fr
 
 You need to download shapefiles (city government websites often have this data), enter projection information as the `proj4string` (if that information isn't already included), and then convert that projection into a `longlat` projection.
 
+The `rgdal` and `rgeos` packages rely on GDAL and GEOS, which can be installed with homebrew on OS X. (`brew install geos` and `brew install gdal`; GEOS is a dependency of GDAL.)
+
 ## Read the shapefiles
 
 ```{r}
@@ -157,7 +159,7 @@ montreal <- readOGR(dsn = "data/montreal/quar-ref",
 
 ## Add projection information
 
-In order to find the proj4 string, I googled "NAD_1983_MTM_8", which was listed under *Methodologie* on the download page with no explanation. This lead me to http://spatialreference.org/ref/epsg/2950/, where I clicked on the proj4 link and copied that string.
+In order to find the proj4 string, I googled "NAD_1983_MTM_8", which was listed under *Methodologie* on the download page with no explanation. This led me to http://spatialreference.org/ref/epsg/2950/, where I clicked on the proj4 link and copied that string.
 
 ```{r}
 montreal@proj4string <- 
