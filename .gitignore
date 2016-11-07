@@ -1,0 +1,6 @@
+## don't commit data directory
+data/
+## only commit html files
+/*
+!*html
+!.gitignore
