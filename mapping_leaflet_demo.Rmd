@@ -135,7 +135,7 @@ Spatial packages: `geohash`, `sp`, `leaflet`
 
 ## Links
 
-Github: 
+Github: https://github.com/ccgilroy/mapping-leaflet-demo
 
 Leaflet: https://rstudio.github.io/leaflet/
 
