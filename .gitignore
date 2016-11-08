@@ -1,4 +1,2 @@
 ## don't commit data directory
 data/
-## don't commit html files to master branch
-*html
