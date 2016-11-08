@@ -1,0 +1,260 @@
+---
+title: "Interactive (and Static) Mapping in R"
+author: "Connor Gilroy"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    keep_md: true
+  ioslides_presentation: default
+---
+
+## Outline
+
+- Read Excel spreadsheet into R
+- Convert geohash locations to latitude & longitude
+- Filter data to look at one city
+- Create interactive map using Leaflet
+- (Bonus: Create static map using shapefiles and ggplot2)
+
+## Dataset
+
+The dataset I'm using is from a gay mobile dating app, Grindr. Grindr made available a small set of aggregated, anonymized user data for a [hackathon](https://hack4equality2016-onlineonly.devpost.com/) in September 2016.
+
+The data don't have much of a public description, but they appear to contain data for the top 100 locations in each of 15 cities. 
+
+```{r}
+library(readxl)
+data_file <- "data/Data4Equality-Aug27.xlsx"
+sheet_names <- excel_sheets(data_file)
+sheet_names
+```
+
+----
+
+```{r warning=FALSE, message=FALSE}
+library(magrittr)
+library(dplyr)
+grindr_df <- 
+  lapply(sheet_names, function(x) read_excel(data_file, sheet = x)) %>%
+  set_names(sheet_names) %>%
+  bind_rows(.id = "city")
+head(grindr_df[, 1:6])
+```
+
+## Geohash to lat/lng
+
+Geohash is a way of encoding location data. The more digits, the more precise the location. In this case, we have geohashes of length 8, with an error of ±0.019km. We can use a library to decode the geohashes into latitudes, longitudes, and errors for each.
+
+```{r}
+library(geohash)
+grindr_df_locs <-
+  grindr_df %>%
+  bind_cols(., gh_decode(.$geohash8))
+```
+
+----
+
+```{r}
+grindr_df_locs %>% 
+  select(geohash8, lat, lng, lat_error, lng_error) %>% 
+  head()
+```
+
+## Montreal
+
+Let's look at one city, Montreal. Montreal has the second-highest number of Grindr users of the 15 cities in the dataset, after Los Angeles.
+
+```{r}
+montreal_grindr_df <- 
+  grindr_df_locs %>% 
+  filter(city == "Montreal")
+```
+
+## Bounding box with `sp`
+
+Create a "bounding box" for the Montreal locations.
+
+```{r}
+library(sp)
+mtl_bb <- 
+  montreal_grindr_df %>% 
+  select(lng, lat) %>% 
+  SpatialPoints(CRS("+proj=longlat")) %>%
+  bbox()
+mtl_bb
+```
+
+## Map with Leaflet
+
+`leaflet` is an R interface to the JavaScript Leaflet library, which creates interactive maps. 
+
+First, create a base map.
+
+```{r}
+library(leaflet)
+m <- 
+  leaflet(montreal_grindr_df) %>% 
+  fitBounds(lng1 = mtl_bb[1, 1],
+            lat1 = mtl_bb[2, 1],
+            lng2 = mtl_bb[1, 2],
+            lat2 = mtl_bb[2, 2]) %>%
+  addTiles()
+```
+
+----
+
+```{r echo=FALSE}
+m
+```
+
+## Plot data
+
+Then, add markers, sized by the number of unique users, with popups.
+
+```{r}
+library(stringr)
+m_markers <- 
+  m %>% 
+  addCircleMarkers(radius = ~unique_users/100,
+                   popup = ~str_c(as.character(unique_users), 
+                                  "unique users", sep = " "), 
+                   weight = 1, opacity = .5, fillOpacity = .5)
+```
+
+----
+
+```{r echo=FALSE}
+m_markers
+```
+
+## Recap: packages used
+
+Tidyverse: `readxl`, `magrittr`, `dplyr`, `stringr`
+
+Spatial packages: `geohash`, `sp`, `leaflet`
+
+## Links
+
+Github: https://github.com/ccgilroy/mapping-leaflet-demo
+
+Leaflet: https://rstudio.github.io/leaflet/
+
+## Bonus: static maps
+
+Static maps are actually more complicated, if you want to render the base map from shapefiles. 
+
+You need to download shapefiles (city government websites often have this data), enter projection information as the `proj4string` (if that information isn't already included), and then convert that projection into a `longlat` projection.
+
+The `rgdal` and `rgeos` packages rely on GDAL and GEOS, which can be installed with homebrew on OS X. (`brew install geos` and `brew install gdal`; GEOS is a dependency of GDAL.)
+
+## Read the shapefiles
+
+```{r}
+library(rgdal)
+## you also need the `rgeos` package to be installed
+## shape files from http://donnees.ville.montreal.qc.ca/dataset/quartiers
+montreal <- readOGR(dsn = "data/montreal/quar-ref", 
+                    layer = "Quar_ref")
+```
+
+## Add projection information
+
+In order to find the proj4 string, I googled "NAD_1983_MTM_8", which was listed under *Methodologie* on the download page with no explanation. This led me to http://spatialreference.org/ref/epsg/2950/, where I clicked on the proj4 link and copied that string.
+
+```{r}
+montreal@proj4string <- 
+  CRS("+proj=tmerc +lat_0=0 +lon_0=-73.5 +k=0.9999 +x_0=304800 +y_0=0 +ellps=GRS80 +units=m +no_defs ")
+```
+
+## Convert projection
+
+```{r}
+montreal <- spTransform(montreal, CRS("+proj=longlat"))
+```
+
+## Transform into data frame
+
+Convert the `SpatialPolygonsDataFrame` object to a regular data frame to use with `ggplot2`, using `broom::tidy()`.
+
+```{r}
+library(broom)
+library(maptools)
+montreal_df <- tidy(montreal, region = "NOM_QR")
+```
+
+## Create the base plot
+
+`ggplot2` has a dedicated geom, theme, and coordinate system for maps.
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+montreal_plot <- 
+  ggplot() + 
+  geom_map(data = montreal_df, map = montreal_df, 
+           aes(x = long, y = lat, map_id =id), 
+           fill = NA, color = "darkgray", size = .3) + 
+  expand_limits(x = montreal_df$long, y = montreal_df$lat) + 
+  theme_map() + 
+  coord_map()
+```
+
+----
+
+```{r echo=FALSE}
+montreal_plot
+```
+
+## Label quartiers of Montreal
+
+Create a data frame with the centroid and name of each quartier.
+
+The quartiers with non-ASCII characters are encoded in latin1 encoding; convert those to UTF-8.
+
+```{r}
+centroids_montreal <- as_data_frame(coordinates(montreal)) 
+centroids_montreal <- 
+  bind_cols(centroids_montreal, 
+            as_data_frame(iconv(montreal@data$NOM_QR, "latin1", "utf8")))
+## or, stringr::str_conv(montreal@data$NOM_QR, "latin1")
+names(centroids_montreal) <- c("long", "lat", "id")
+```
+
+## Label quartiers of Montreal
+
+```{r}
+montreal_plot_labeled <-
+  montreal_plot + 
+  geom_text(data = centroids_montreal, 
+            aes(label = id, x = long, y = lat), size = 1.2)
+```
+
+----
+
+```{r echo=FALSE, dpi=288, out.width="720px"}
+montreal_plot_labeled
+```
+
+## Plot Grindr data on labeled map
+
+```{r}
+montreal_plot_grindr <- 
+  montreal_plot_labeled + 
+  geom_point(data = montreal_grindr_df, 
+             aes(x = lng, y = lat, map_id = 1, color = unique_users, 
+                 size = loc_pings), 
+             alpha = .8) + 
+  scale_color_gradient(low = "pink", high = "darkred") + 
+  scale_size_continuous(guide = guide_legend(reverse = TRUE)) + 
+  theme(legend.position = c(0, 1),
+        legend.justification = c(0, 1), 
+        legend.box = "horizontal", 
+        plot.title = element_text(size = 20)) + 
+  ggtitle("Grindr pings in Montreal, QC, CA")
+```
+
+----
+
+```{r echo=FALSE, dpi=288, out.width='720px'}
+montreal_plot_grindr
+```
