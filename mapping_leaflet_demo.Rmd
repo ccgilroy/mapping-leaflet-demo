@@ -127,6 +127,51 @@ m_markers <-
 m_markers
 ```
 
+## Los Angeles
+
+```{r}
+la_grindr_df <- grindr_df_locs %>% filter(city == "LA")
+la_bb <- 
+  la_grindr_df %>% 
+  select(lng, lat) %>% 
+  SpatialPoints(CRS("+proj=longlat")) %>% 
+  bbox()
+m_la <- 
+  leaflet(la_grindr_df) %>% 
+  fitBounds(la_bb[1, 1], la_bb[2, 1], la_bb[1, 2], la_bb[2, 2]) %>% 
+  addTiles %>%
+  addCircleMarkers(radius = ~unique_users/100, 
+                   popup = ~str_c(as.character(unique_users), 
+                                  "unique users", sep = " "),
+                   weight = 1, opacity = .5, fillOpacity = .5)
+```
+
+----
+
+```{r echo=FALSE}
+m_la
+```
+
+## All 15 cities
+
+```{r}
+pal <- colorFactor("Paired", sheet_names)
+m_15 <- 
+  leaflet(grindr_df_locs) %>% 
+  addTiles() %>% 
+  addCircleMarkers(popup = ~as.character(unique_users), 
+                   color = ~pal(city), 
+                   radius = 5, weight = 2,
+                   opacity = .8, fillOpacity = 0.5) %>%
+  addLegend(pal = pal, values = ~city)
+```
+
+----
+
+```{r echo=FALSE}
+m_15
+```
+
 ## Recap: packages used
 
 Tidyverse: `readxl`, `magrittr`, `dplyr`, `stringr`
